@@ -3,6 +3,7 @@ import torchvision
 import torch
 from torch.utils.data import DataLoader
 import argparse
+import time
 
 def get_cifar10_dataloaders(train_batch_size, train_num_workers, test_batch_size, test_num_workers, download_path):
     train_transforms = torchvision.transforms.Compose([
@@ -29,6 +30,12 @@ def train(train_loader, epoch_num, mod, optim, loss_func, device, profile, verbo
     epoch_loss = 0
     epoch_correct = 0
     epoch_total = 0
+    epoch_dl_time = 0
+    epoch_train_time = 0
+    epoch_metrics_time = 0
+    n_batches = len(train_loader)
+    n_samples = len(train_loader.dataset)
+    train_loader = iter(train_loader)
 
     if profile:
         with torch.profiler.profile(
@@ -39,54 +46,94 @@ def train(train_loader, epoch_num, mod, optim, loss_func, device, profile, verbo
             profile_memory=True,
             with_stack=True
         ) as prof:
-            for batch_num, (X_batch, y_batch) in enumerate(train_loader):
-                if batch_num == 10: break
+            for batch_num in range(n_batches):
+                torch.cuda.synchronize()
+                dl_start = time.perf_counter()
+                X_batch, y_batch = next(train_loader)
+                torch.cuda.synchronize()
+                dl_end = time.perf_counter()
+                dl_time = dl_end - dl_start
+                epoch_dl_time += dl_time
+
                 X_batch = X_batch.to(device)
                 y_batch = y_batch.to(device)
 
+                torch.cuda.synchronize()
+                train_start = time.perf_counter()
                 optim.zero_grad()
                 out = mod(X_batch)
                 loss = loss_func(out, y_batch)
                 loss.backward()
                 optim.step()
+                torch.cuda.synchronize()
+                train_end = time.perf_counter()
+                train_time = train_end - train_start
+                epoch_train_time += train_time
                 
+                torch.cuda.synchronize()
+                metrics_start = time.perf_counter()
                 loss = loss.item()
-                epoch_loss += loss
+                epoch_loss += loss * X_batch.size(0)
                 _, pred_labels = out.max(1)
                 correct = pred_labels.eq(y_batch).sum().item()
                 epoch_correct += correct
                 total = out.size(dim=0)
                 epoch_total += total
-
+                torch.cuda.synchronize()
+                metrics_end = time.perf_counter()
+                metrics_time = metrics_end - metrics_start
+                epoch_metrics_time += metrics_time
+                
                 prof.step()
 
                 if verbose: 
                     print(f'Epoch: {epoch_num + 1}, Batch #: {batch_num + 1}, Batch Size: {total}, Training Loss: {loss}, Top-1 Accuracy: {correct/total}')
         
     else:
-        for batch_num, (X_batch, y_batch) in enumerate(train_loader):
-            if batch_num == 10: break
+        for batch_num in range(n_batches):
+            torch.cuda.synchronize()
+            dl_start = time.perf_counter()
+            X_batch, y_batch = next(train_loader)
+            torch.cuda.synchronize()
+            dl_end = time.perf_counter()
+            dl_time = dl_end - dl_start
+            epoch_dl_time += dl_time
+
             X_batch = X_batch.to(device)
             y_batch = y_batch.to(device)
 
+            torch.cuda.synchronize()
+            train_start = time.perf_counter()
             optim.zero_grad()
             out = mod(X_batch)
             loss = loss_func(out, y_batch)
             loss.backward()
             optim.step()
+            torch.cuda.synchronize()
+            train_end = time.perf_counter()
+            train_time = train_end - train_start
+            epoch_train_time += train_time
             
+            torch.cuda.synchronize()
+            metrics_start = time.perf_counter()
             loss = loss.item()
-            epoch_loss += loss
+            epoch_loss += loss * X_batch.size(0)
             _, pred_labels = out.max(1)
             correct = pred_labels.eq(y_batch).sum().item()
             epoch_correct += correct
             total = out.size(dim=0)
             epoch_total += total
+            torch.cuda.synchronize()
+            metrics_end = time.perf_counter()
+            metrics_time = metrics_end - metrics_start
+            epoch_metrics_time += metrics_time
 
             if verbose: 
                 print(f'Epoch: {epoch_num + 1}, Batch #: {batch_num + 1}, Batch Size: {total}, Training Loss: {loss}, Top-1 Accuracy: {correct/total}')
-    
-    return epoch_loss, epoch_total, epoch_correct
+
+    epoch_loss /= n_samples 
+
+    return epoch_loss, epoch_total, epoch_correct, epoch_dl_time, epoch_train_time, epoch_metrics_time 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='ResnetTrain', description='Training script for resnet-18.')
@@ -96,7 +143,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_num_workers', type=int, default=2, help='Number of workers used for training dataloader.')
     parser.add_argument('--test_batch_size', type=int, default=100, help='Batch size used for testing data.')
     parser.add_argument('--test_num_workers', type=int, default=2, help='Number of workers used for testing dataloader.')
-    parser.add_argument('--verbose', choices=[True, False], type=bool, default=False, help='Whether or not to print debug output.')
+    parser.add_argument('--verbose', type=int, default=0, help='Whether or not to print debug output.')
     parser.add_argument('--lr', type=float, default=0.1, help='Value for optimizer learning rate.')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Value for optimizer weight decay.')
     parser.add_argument('--momentum', type=float, default=0.9, help='Value for momentum if using SGG or RMSProp optimizers.')
@@ -131,14 +178,36 @@ if __name__ == '__main__':
 
     loss_func = torch.nn.CrossEntropyLoss()
 
-    losses = []
-    total = []
-    correct = []
+    dl_times = []
+    train_times = []
+    metrics_times = []
+    epoch_times = []
 
     for i in range(args.epochs):
-        epoch_loss, epoch_total, epoch_correct = train(train_loader, i, mod, optim, loss_func, device, args.enable_torch_profiling, verbose=args.epochs)
-        print(f'END OF Epoch: {i+1}, Training Loss: {epoch_loss}, Top-1 Accuracy: {epoch_correct / epoch_total}')
+        torch.cuda.synchronize()
+        epoch_start_time = time.perf_counter()
+        epoch_loss, epoch_total, epoch_correct, epoch_dl_time, epoch_train_time, epoch_metrics_time = train(train_loader, i, mod, optim, loss_func, device, args.enable_torch_profiling, verbose=args.verbose)
+        dl_times.append(epoch_dl_time)
+        train_times.append(epoch_train_time)
+        metrics_times.append(epoch_metrics_time)
+        torch.cuda.synchronize()
+        epoch_end_time = time.perf_counter()
+        epoch_time = epoch_end_time - epoch_start_time
+        epoch_times.append(epoch_time)
+
+        print(f'[EPOCH {i+1} SUMMARY] Total/AVG DL Time: {epoch_dl_time}/{epoch_dl_time / len(train_loader)}, Total/AVG Train Time: {epoch_train_time}/{epoch_train_time / len(train_loader)}, Total/AVG Metrics Time: {epoch_metrics_time}/{epoch_metrics_time / len(train_loader)}, Total/AVG Running Time: {epoch_time}/{epoch_time / len(train_loader)}, Training Loss: {epoch_loss}, Top-1 Accuracy: {epoch_correct / epoch_total}')
         print()
+    
+    dl_time = sum(dl_times)
+    avg_dl_time = dl_time / args.epochs
+    train_time = sum(train_times)
+    avg_train_time = train_time / args.epochs
+    metrics_time = sum(metrics_times)
+    avg_metrics_time = metrics_time / args.epochs
+    runtime = sum(epoch_times)
+    avg_runtime = runtime / args.epochs
+
+    print(f'[BENCHMARKING SUMMARY ACROSS ALL EPOCHS] Total/AVG DL Time: {dl_time}/{avg_dl_time}, Total/AVG Train Time: {train_time}/{avg_train_time}, Total/AVG Metrics Time: {metrics_time}/{avg_metrics_time}, Total/AVG Runtime Across All Epochs: {runtime}/{avg_runtime}')
         
 
 
