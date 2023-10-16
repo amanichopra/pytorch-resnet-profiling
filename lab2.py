@@ -24,20 +24,46 @@ def get_cifar10_dataloaders(train_batch_size, train_num_workers, test_batch_size
 
     return train_loader, test_loader
 
-def train(train_loader, epoch_num, mod, optim, loss_func, device, verbose=False):
+def train(train_loader, epoch_num, mod, optim, loss_func, device, profile, verbose=False):
     mod.train()
     epoch_loss = 0
     epoch_correct = 0
     epoch_total = 0
 
-    with torch.profiler.profile(
-        activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
-        schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=2),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/resnet18'),
-        record_shapes=True,
-        profile_memory=True,
-        with_stack=True
-    ) as prof:
+    if profile:
+        with torch.profiler.profile(
+            activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+            schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=2),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler('./log/resnet18'),
+            record_shapes=True,
+            profile_memory=True,
+            with_stack=True
+        ) as prof:
+            for batch_num, (X_batch, y_batch) in enumerate(train_loader):
+                if batch_num == 10: break
+                X_batch = X_batch.to(device)
+                y_batch = y_batch.to(device)
+
+                optim.zero_grad()
+                out = mod(X_batch)
+                loss = loss_func(out, y_batch)
+                loss.backward()
+                optim.step()
+                
+                loss = loss.item()
+                epoch_loss += loss
+                _, pred_labels = out.max(1)
+                correct = pred_labels.eq(y_batch).sum().item()
+                epoch_correct += correct
+                total = out.size(dim=0)
+                epoch_total += total
+
+                prof.step()
+
+                if verbose: 
+                    print(f'Epoch: {epoch_num + 1}, Batch #: {batch_num + 1}, Batch Size: {total}, Training Loss: {loss}, Top-1 Accuracy: {correct/total}')
+        
+    else:
         for batch_num, (X_batch, y_batch) in enumerate(train_loader):
             if batch_num == 10: break
             X_batch = X_batch.to(device)
@@ -57,10 +83,8 @@ def train(train_loader, epoch_num, mod, optim, loss_func, device, verbose=False)
             total = out.size(dim=0)
             epoch_total += total
 
-            prof.step()
-
             if verbose: 
-                print(f'Epoch: {epoch_num}, Batch #: {batch_num}, Batch Size: {total}, Training Loss: {loss}, Top-1 Accuracy: {correct/total}')
+                print(f'Epoch: {epoch_num + 1}, Batch #: {batch_num + 1}, Batch Size: {total}, Training Loss: {loss}, Top-1 Accuracy: {correct/total}')
     
     return epoch_loss, epoch_total, epoch_correct
 
@@ -78,8 +102,10 @@ if __name__ == '__main__':
     parser.add_argument('--momentum', type=float, default=0.9, help='Value for momentum if using SGG or RMSProp optimizers.')
     parser.add_argument('--epsilon', type=float, default=1e-8, help='Value for epsilon if using RMSProp, Adam, Adagrad, or Adadelta.')
     parser.add_argument('--data_download_path', default='./data', help='Path to download CIFAR-10 data.')
-    parser.add_argument('--cuda', default=False, type=bool, help='Whether or not to use CUDA. GPUs must be available.')
-    parser.add_argument('--nesterov', default=False, type=bool, help='Whether or not to Nesterov momentum if using SGD optimizer.')
+    parser.add_argument('--cuda', default=0, type=int, help='Whether or not to use CUDA. GPUs must be available.')
+    parser.add_argument('--nesterov', default=0, type=int, help='Whether or not to Nesterov momentum if using SGD optimizer.')
+    parser.add_argument('--enable_torch_profiling', default=0, type=int, help='Whether or not to enable the Pytorch profiler during training.')
+    parser.add_argument('--include_batch_norm_layers', default=1, type=int, help='Whether or not to include batch norm layers in ResNet model.') 
 
     args = parser.parse_args()
 
@@ -90,7 +116,7 @@ if __name__ == '__main__':
 
     train_loader, test_loader = get_cifar10_dataloaders(args.train_batch_size, args.train_num_workers, args.test_batch_size, args.test_num_workers, download_path=args.data_download_path)
 
-    mod = ResNet18().to(device)
+    mod = ResNet18(include_batch_norm_layers=args.include_batch_norm_layers).to(device)
 
     if args.optimizer == 'sgd':
         optim = torch.optim.SGD(mod.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
@@ -110,8 +136,9 @@ if __name__ == '__main__':
     correct = []
 
     for i in range(args.epochs):
-        epoch_loss, epoch_total, epoch_correct = train(train_loader, i, mod, optim, loss_func, device, verbose=args.epochs)
-
+        epoch_loss, epoch_total, epoch_correct = train(train_loader, i, mod, optim, loss_func, device, args.enable_torch_profiling, verbose=args.epochs)
+        print(f'END OF Epoch: {i+1}, Training Loss: {epoch_loss}, Top-1 Accuracy: {epoch_correct / epoch_total}')
+        print()
         
 
 
