@@ -1,3 +1,1 @@
 # pytorch-resnet-profiling
-
-test
