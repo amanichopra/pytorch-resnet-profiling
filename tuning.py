@@ -8,6 +8,7 @@ DOWNLOAD_PATH = './data'
 
 def get_best_num_workers():
     num_workers = 0
+    total_dl_time = 0
     prev_dl_time = float('inf')
 
     while True:
@@ -22,11 +23,12 @@ def get_best_num_workers():
         print(f'DL Time for {num_workers} Workers: {dl_time}')
 
         if prev_dl_time <= dl_time:
-            return num_workers - 4
+            return num_workers - 4, total_dl_time
 
         num_workers += 4
+        total_dl_time += dl_time
         prev_dl_time = dl_time
 
 if __name__ == '__main__':
-    best_num_workers = get_best_num_workers()
-    print(f'{best_num_workers} Workers Needed for Best Runtime Performance!')
+    best_num_workers, total_dl_time = get_best_num_workers()
+    print(f'Total DL time of {total_dl_time} seconds elapsed to find {best_num_workers} workers needed for best runtime performance!')

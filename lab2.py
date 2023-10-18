@@ -168,13 +168,13 @@ if __name__ == '__main__':
     if args.optimizer == 'sgd':
         optim = torch.optim.SGD(mod.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay, nesterov=args.nesterov)
     elif args.optimizer == 'adam':
-        optim = torch.optim.Adam(mod.parameters(), lr=args.lr, eps=args.epsilson, weight_decay=args.wd)
+        optim = torch.optim.Adam(mod.parameters(), lr=args.lr, eps=args.epsilon, weight_decay=args.weight_decay)
     elif args.optimizer == 'adagrad':
-        optim = torch.optim.Adagrad(mod.parameters(), lr=args.lr, eps=args.epsilson, weight_decay=args.wd)
+        optim = torch.optim.Adagrad(mod.parameters(), lr=args.lr, eps=args.epsilon, weight_decay=args.weight_decay)
     elif args.optimizer == 'rmsprop':
         optim = torch.optim.RMSprop(mod.parameters(), lr=args.lr, eps=args.epsilon, momentum=args.momentum, weight_decay=args.weight_decay)
     else:
-        optim = torch.optim.Adadelta(mod.parameters(), lr=args.lr, eps=args.epsilson, weight_decay=args.wd)
+        optim = torch.optim.Adadelta(mod.parameters(), lr=args.lr, eps=args.epsilon, weight_decay=args.weight_decay)
 
     loss_func = torch.nn.CrossEntropyLoss()
 
