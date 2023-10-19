@@ -42,6 +42,12 @@ c6: lab2.py
 c7: lab2.py
 	python lab2.py --optimizer sgd --epochs 5 --train_batch_size 128 --train_num_workers $(OPT_NUM_WORKERS) --test_batch_size 100 --test_num_workers 2 --lr 0.1 --weight_decay 5e-4 --momentum 0.9 --verbose 0 --data_download_path ./data --cuda 1 --nesterov 0 --enable_torch_profiling 0 --include_batch_norm_layers 0
 
+q3: get_model_summary.py
+	python get_model_summary.py --optimizer sgd
+
+q4: get_model_summary.py
+	python get_model_summary.py --optimizer adam
+
 ec:
 	python lab2.py --optimizer $(OPTIMIZER) --epochs $(EPOCHS) --train_batch_size $(TRAIN_BATCH_SIZE) --train_num_workers $(OPT_NUM_WORKERS) --test_batch_size $(TEST_BATCH_SIZE) --test_num_workers $(TEST_NUM_WORKERS) --lr $(LR) --weight_decay $(WEIGHT_DECAY) --momentum $(MOMENTUM) --verbose 0 --data_download_path $(DATA_DOWNLOAD_PATH) --cuda $(CUDA) --nesterov 0 --enable_torch_profiling 1 --include_batch_norm_layers 1
 	tensorboard --logdir=./log

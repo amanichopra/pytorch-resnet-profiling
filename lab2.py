@@ -47,10 +47,10 @@ def train(train_loader, epoch_num, mod, optim, loss_func, device, profile, verbo
             with_stack=True
         ) as prof:
             for batch_num in range(n_batches):
-                torch.cuda.synchronize()
+                if device.type == 'cuda': torch.cuda.synchronize()
                 dl_start = time.perf_counter()
                 X_batch, y_batch = next(train_loader)
-                torch.cuda.synchronize()
+                if device.type == 'cuda': torch.cuda.synchronize()
                 dl_end = time.perf_counter()
                 dl_time = dl_end - dl_start
                 epoch_dl_time += dl_time
@@ -58,19 +58,19 @@ def train(train_loader, epoch_num, mod, optim, loss_func, device, profile, verbo
                 X_batch = X_batch.to(device)
                 y_batch = y_batch.to(device)
 
-                torch.cuda.synchronize()
+                if device.type == 'cuda': torch.cuda.synchronize()
                 train_start = time.perf_counter()
                 optim.zero_grad()
                 out = mod(X_batch)
                 loss = loss_func(out, y_batch)
                 loss.backward()
                 optim.step()
-                torch.cuda.synchronize()
+                if device.type == 'cuda': torch.cuda.synchronize()
                 train_end = time.perf_counter()
                 train_time = train_end - train_start
                 epoch_train_time += train_time
                 
-                torch.cuda.synchronize()
+                if device.type == 'cuda': torch.cuda.synchronize()
                 metrics_start = time.perf_counter()
                 loss = loss.item()
                 epoch_loss += loss * X_batch.size(0)
@@ -79,7 +79,7 @@ def train(train_loader, epoch_num, mod, optim, loss_func, device, profile, verbo
                 epoch_correct += correct
                 total = out.size(dim=0)
                 epoch_total += total
-                torch.cuda.synchronize()
+                if device.type == 'cuda': torch.cuda.synchronize()
                 metrics_end = time.perf_counter()
                 metrics_time = metrics_end - metrics_start
                 epoch_metrics_time += metrics_time
@@ -91,10 +91,10 @@ def train(train_loader, epoch_num, mod, optim, loss_func, device, profile, verbo
         
     else:
         for batch_num in range(n_batches):
-            torch.cuda.synchronize()
+            if device.type == 'cuda': torch.cuda.synchronize()
             dl_start = time.perf_counter()
             X_batch, y_batch = next(train_loader)
-            torch.cuda.synchronize()
+            if device.type == 'cuda': torch.cuda.synchronize()
             dl_end = time.perf_counter()
             dl_time = dl_end - dl_start
             epoch_dl_time += dl_time
@@ -102,19 +102,19 @@ def train(train_loader, epoch_num, mod, optim, loss_func, device, profile, verbo
             X_batch = X_batch.to(device)
             y_batch = y_batch.to(device)
 
-            torch.cuda.synchronize()
+            if device.type == 'cuda': torch.cuda.synchronize()
             train_start = time.perf_counter()
             optim.zero_grad()
             out = mod(X_batch)
             loss = loss_func(out, y_batch)
             loss.backward()
             optim.step()
-            torch.cuda.synchronize()
+            if device.type == 'cuda': torch.cuda.synchronize()
             train_end = time.perf_counter()
             train_time = train_end - train_start
             epoch_train_time += train_time
             
-            torch.cuda.synchronize()
+            if device.type == 'cuda': torch.cuda.synchronize()
             metrics_start = time.perf_counter()
             loss = loss.item()
             epoch_loss += loss * X_batch.size(0)
@@ -123,7 +123,7 @@ def train(train_loader, epoch_num, mod, optim, loss_func, device, profile, verbo
             epoch_correct += correct
             total = out.size(dim=0)
             epoch_total += total
-            torch.cuda.synchronize()
+            if device.type == 'cuda': torch.cuda.synchronize()
             metrics_end = time.perf_counter()
             metrics_time = metrics_end - metrics_start
             epoch_metrics_time += metrics_time
@@ -185,17 +185,17 @@ if __name__ == '__main__':
 
     # train once for cuda warmup
     train(train_loader, -1, mod, optim, loss_func, device, 0, verbose=False)
-    torch.cuda.synchronize()
+    if device.type == 'cuda': torch.cuda.synchronize()
 
 
     for i in range(args.epochs):
-        torch.cuda.synchronize()
+        if device.type == 'cuda': torch.cuda.synchronize()
         epoch_start_time = time.perf_counter()
         epoch_loss, epoch_total, epoch_correct, epoch_dl_time, epoch_train_time, epoch_metrics_time = train(train_loader, i, mod, optim, loss_func, device, args.enable_torch_profiling, verbose=args.verbose)
         dl_times.append(epoch_dl_time)
         train_times.append(epoch_train_time)
         metrics_times.append(epoch_metrics_time)
-        torch.cuda.synchronize()
+        if device.type == 'cuda': torch.cuda.synchronize()
         epoch_end_time = time.perf_counter()
         epoch_time = epoch_end_time - epoch_start_time
         epoch_times.append(epoch_time)
