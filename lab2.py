@@ -183,6 +183,11 @@ if __name__ == '__main__':
     metrics_times = []
     epoch_times = []
 
+    # train once for cuda warmup
+    train(train_loader, -1, mod, optim, loss_func, device, 0, verbose=False)
+    torch.cuda.synchronize()
+
+
     for i in range(args.epochs):
         torch.cuda.synchronize()
         epoch_start_time = time.perf_counter()
